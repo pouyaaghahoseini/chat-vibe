@@ -1,0 +1,26 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node / Next
+node_modules
+.next
+out
+dist
+
+# Go
+bin
+coverage.out
+
+# Logs
+*.log
+
+# OS / editors
+.DS_Store
+.vscode
+.idea
+
+# Docker/local data
+postgres_data
+redis_data
