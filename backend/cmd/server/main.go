@@ -1,36 +1,43 @@
 package main
 
 import (
-	"fmt"
+	"context"
 	"log"
 	"net/http"
-	"os"
+	"time"
+
+	"chatvibe/backend/internal/app"
+	"chatvibe/backend/internal/config"
+	"chatvibe/backend/internal/httpserver"
 )
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("OK"))
-}
-
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ChatVibe backend is running"))
-}
-
 func main() {
-	port := os.Getenv("BACKEND_PORT")
-	if port == "" {
-		port = "8080"
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("load config: %v", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", rootHandler)
-	mux.HandleFunc("/health", healthHandler)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	addr := fmt.Sprintf(":%s", port)
-	log.Printf("ChatVibe backend listening on port %s", addr)
+	application, err := app.New(ctx, cfg)
+	if err != nil {
+		log.Fatalf("initialize app: %v", err)
+	}
+	defer application.Close()
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	handler := httpserver.NewHandler(application)
+	router := httpserver.NewRouter(handler)
+
+	server := &http.Server{
+		Addr:              ":" + cfg.BackendPort,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	log.Printf("ChatVibe backend listening on :%s", cfg.BackendPort)
+
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("server failed: %v", err)
 	}
 }

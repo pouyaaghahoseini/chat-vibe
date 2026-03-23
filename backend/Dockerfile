@@ -4,7 +4,9 @@ WORKDIR /app
 
 COPY go.mod ./
 COPY cmd ./cmd
+COPY internal ./internal
 
+RUN go mod tidy
 RUN go build -o server ./cmd/server
 
 FROM debian:bookworm-slim
