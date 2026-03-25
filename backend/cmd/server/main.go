@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"chatvibe/backend/internal/app"
@@ -17,10 +21,10 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	startupCtx, startupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer startupCancel()
 
-	application, err := app.New(ctx, cfg)
+	application, err := app.New(startupCtx, cfg)
 	if err != nil {
 		log.Fatalf("initialize app: %v", err)
 	}
@@ -35,9 +39,34 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Printf("ChatVibe backend listening on :%s", cfg.BackendPort)
+	serverErrCh := make(chan error, 1)
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	go func() {
+		log.Printf("ChatVibe backend listening on :%s", cfg.BackendPort)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrCh <- err
+		}
+	}()
+
+	shutdownSignal := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignal, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-shutdownSignal:
+		log.Printf("received shutdown signal: %s", sig)
+	case err := <-serverErrCh:
 		log.Fatalf("server failed: %v", err)
 	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
+		if err := server.Close(); err != nil {
+			log.Printf("force close failed: %v", err)
+		}
+	}
+
+	log.Printf("server shutdown complete")
 }

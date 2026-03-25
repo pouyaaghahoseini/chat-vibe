@@ -1,6 +1,10 @@
 package httpserver
 
-import "net/http"
+import (
+	"net/http"
+
+	"chatvibe/backend/internal/middleware"
+)
 
 func NewRouter(handler *Handler) http.Handler {
 	mux := http.NewServeMux()
@@ -9,5 +13,5 @@ func NewRouter(handler *Handler) http.Handler {
 	mux.HandleFunc("/health", handler.Health)
 	mux.HandleFunc("/ready", handler.Ready)
 
-	return mux
+	return middleware.Logging(mux)
 }
